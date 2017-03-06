@@ -16,6 +16,8 @@ limitations under the License.
 */
 "use strict";
 
+const utils = require("./utils");
+
 /** The {@link module:models/event.MatrixEvent|MatrixEvent} class. */
 module.exports.MatrixEvent = require("./models/event").MatrixEvent;
 /** The {@link module:models/event.EventStatus|EventStatus} enum. */
@@ -61,7 +63,6 @@ module.exports.Filter = require("./filter");
 module.exports.TimelineWindow = require("./timeline-window").TimelineWindow;
 /** The {@link module:interactive-auth} class. */
 module.exports.InteractiveAuth = require("./interactive-auth");
-
 
 /**
  * Create a new Matrix Call.
@@ -135,6 +136,37 @@ module.exports.createClient = function(opts) {
     });
     opts.scheduler = opts.scheduler || new module.exports.MatrixScheduler();
     return new module.exports.MatrixClient(opts);
+};
+
+module.exports.createClientForUserId = function(userId, opts) {
+    const domain = userId.replace(/^.*?:/, '');
+    const baseUrl = "https://" + domain;
+    const httpOpts = {
+        baseUrl: baseUrl,
+        request: opts.request,
+        prefix: "",
+        onlyData: true,
+        localTimeoutMs: opts.localTimeoutMs,
+    };
+    const http = new module.exports.MatrixHttpApi(undefined, httpOpts);
+    return http.request(undefined, "GET", "/.well-known/host-meta")
+    .then(function(meta) {
+        if !utils.isArray(meta.links) return baseUrl;
+        for (let i = 0; i < meta.links.length; ++i) {
+            const link = meta.links[i];
+            if (link.rel != "matrix" || link.template !== undefined) continue;
+            if (link.href) {
+                return link.href;
+            }
+        }
+        return baseUrl;
+    }, function(err) {
+        return baseUrl;
+    }).then(function(baseUrl) {
+        opts.baseUrl = baseUrl;
+        opts.userId = userId;
+        return module.exports.createClient(opts);
+    });
 };
 
 /**
